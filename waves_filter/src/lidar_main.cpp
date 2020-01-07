@@ -11,6 +11,221 @@ void lidarPointsFilter(std::vector<cv::Point3d>& lidar_poitns);
 void filtering(std::vector<cv::Point3d>& lidar_points,std::vector<int>& labels, std::vector<cv::Point2f>& centers);
 
 
+class Lidar_node{
+public:
+	Lidar_node();
+	void process1();
+	void process2();
+	void clustering(pcl::PointCloud<pcl::PointXYZ> points, pcl::PointCloud<pcl::PointXYZ> &result);
+	float p2pdis(pcl::PointXYZ a, pcl::PointXYZ b);
+private:
+	ros::NodeHandle node_handle_;
+	ros::Publisher pub;
+	ros::Publisher fpub;
+	int step;
+	int maxdis;
+	int min_cluster_number;
+	int max_distance_in_cluster;
+};
+
+Lidar_node::Lidar_node()
+{
+	pub = node_handle_.advertise<sensor_msgs::PointCloud2 >("point",10);
+	fpub = node_handle_.advertise<sensor_msgs::PointCloud2 >("filter",10);
+	step = 2;
+	maxdis = 500;  // the maximum distance that lidar can detect
+	min_cluster_number = 8;
+	max_distance_in_cluster = 5;
+}
+
+void Lidar_node::clustering(pcl::PointCloud<pcl::PointXYZ> points, pcl::PointCloud<pcl::PointXYZ> &result) {
+	vector<vector<int>> filter;
+	for (int k = 0; k < maxdis/step; ++k) {
+		filter.push_back(vector<int>());
+	}
+	pcl::PointXYZ origin(0,0,0);
+	for (int j = 0; j < points.size(); ++j) {
+		int index = (int)p2pdis(origin,points[j]);
+		filter[index].push_back(j);
+	}
+
+	for (int l = 0; l < maxdis / step; ++l) {
+		int num = filter[l].size();
+		if(num > min_cluster_number){
+			float maxdistance = -999;
+			for (int m = 0; m < 10; ++m) {
+				int m1 = rand()%filter[l].size();
+				int m2 = rand()%filter[l].size();
+				float dis = p2pdis(points[filter[l][m1]],points[filter[l][m2]]);
+				if(dis>maxdistance)
+					maxdistance = dis;
+			}
+			if(maxdistance < max_distance_in_cluster){
+				for (int j = 0; j < filter[l].size(); ++j) {
+					result.push_back(points[filter[l][j]]);
+				}
+			}
+		}
+	}
+}
+
+float Lidar_node::p2pdis(pcl::PointXYZ a, pcl::PointXYZ b) {
+	return sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y)+(a.z-b.z)*(a.z-b.z));
+}
+
+
+void print(pcl::PointXYZ p){
+	cout << p.x << " " << p.y << " " << p.z << endl;
+}
+
+struct gridMap{
+	bool isNoise;
+	int num;
+	float maxH;
+	float minH;
+	float diffH;
+	gridMap():isNoise(false),num(0),maxH(-999),minH(999),diffH(0){}
+};
+pcl::PointCloud<pcl::PointXYZ> gridMap_filter(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float grid_size, float minx, float maxx, float miny, float maxy)
+{
+	float minDiffH = 0.15; // minimum height difference
+	int minNum = 5;
+	// initial
+	int cols = (maxx - minx) / grid_size + 1;
+	int rows = (maxy - miny) / grid_size + 1;
+	gridMap **map = new gridMap *[rows];
+	for (int i = 0; i < rows; ++i) {
+		map[i] = new gridMap[cols];
+	}
+
+	// filling map and filtering
+	for (int k = 0; k < cloud->points.size(); ++k) {
+		auto pc = cloud->points[k];
+		int i = (pc.y - miny) / grid_size;
+		int j = (pc.x - minx) / grid_size;
+		map[i][j].num += 1;
+		if(pc.z > map[i][j].maxH)
+			map[i][j].maxH = pc.z;
+		if(pc.z < map[i][j].minH)
+			map[i][j].minH = pc.z;
+	}
+
+	pcl::PointCloud<pcl::PointXYZ> pcloud;
+	for (int l = 0; l < rows; ++l) {
+		for (int m = 0; m < cols; ++m) {
+			map[l][m].diffH = map[l][m].maxH - map[l][m].minH;
+			if(map[l][m].diffH < minDiffH || map[l][m].num < minNum){
+				map[l][m].isNoise = true;
+			}
+			else{
+				pcl::PointXYZ p1(l+miny,m+minx,0),p2(l+miny+1,m+minx,0),p3(l+miny,m+minx+1,0),p4(l+miny+1,m+minx+1,0);
+				pcloud.push_back(p1);
+				pcloud.push_back(p2);
+				pcloud.push_back(p3);
+				pcloud.push_back(p4);
+			}
+		}
+	}
+
+	delete[] map;
+	return pcloud;
+}
+
+void Lidar_node::process1(){
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+	for(int i = 0; i < 5; i++){
+		ifstream in;
+		string str = "/media/yxt/XT/yunzhou/data1/1578127429493/lidar/";
+		stringstream ss;
+		string num;
+		ss.clear();
+		ss << i;
+		ss >> num;
+		str = str + num + ".pcd";
+		if(pcl::io::loadPCDFile<pcl::PointXYZ>(str, *cloud)==-1){
+			cout << "error " << endl;
+			return;
+		}
+
+
+		float maxx=-9999, maxy=-9999, minx=9999, miny=9999, grid_size = 1;
+		pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2(new pcl::PointCloud<pcl::PointXYZ>);
+		for (int j = 0; j < cloud->points.size(); ++j) {
+			if(cloud->points[j].x > maxx)
+				maxx = cloud->points[j].x;
+			if(cloud->points[j].x < minx)
+				minx = cloud->points[j].x;
+			if(cloud->points[j].y > maxy)
+				maxy = cloud->points[j].y;
+			if(cloud->points[j].y < miny)
+				miny = cloud->points[j].y;
+		}
+
+		pcl::PointCloud<pcl::PointXYZ> result;
+		result = gridMap_filter(cloud,grid_size,minx,maxx,miny,maxy);
+
+
+		cout << str << endl;
+		sensor_msgs::PointCloud2 pp;
+		pcl::toROSMsg(*cloud,pp);
+		pp.header.frame_id = "pandar";
+		pub.publish(pp);
+
+		sensor_msgs::PointCloud2 fresult;
+		pcl::toROSMsg(result,fresult);
+		fresult.header.frame_id = "pandar";
+		fpub.publish(fresult);
+		sleep(10);
+	}
+
+}
+
+void Lidar_node::process2() {
+
+	for (int i = 0; i < 115; ++i)
+	{
+
+
+		ifstream in;
+		string str = "/home/yxt/conference/yunzhou/detect_results/";
+		stringstream ss;
+		string num;
+		ss.clear();
+		ss << i;
+		ss >> num;
+		str = str + num + ".txt";
+		cout << "open " << str << endl;
+		in.open(str.data());
+		string s;
+		pcl::PointCloud<pcl::PointXYZ>::Ptr p(new pcl::PointCloud<pcl::PointXYZ>);
+		pcl::PointCloud<pcl::PointXYZ>::Ptr pend(new pcl::PointCloud<pcl::PointXYZ>);
+
+		while(getline(in,s))
+		{
+			pcl::PointXYZ point;
+			stringstream aa;
+			aa.clear();
+			aa << s;
+			aa >> point.x >> point.y >> point.z;
+			p->points.push_back(point);
+		}
+		pcl::PointCloud<pcl::PointXYZ> result;
+		clustering(*p,result);
+
+		sensor_msgs::PointCloud2 pp;
+		pcl::toROSMsg(*p,pp);
+		pp.header.frame_id = "velodyne";
+		pub.publish(pp);
+
+		sensor_msgs::PointCloud2 fresult;
+		pcl::toROSMsg(result,fresult);
+		fresult.header.frame_id = "velodyne";
+		fpub.publish(fresult);
+
+		sleep(1);
+	}
+}
+
 void readPCDfile(const std::string finname, std::vector<cv::Point3d>& points)
 {
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
@@ -105,8 +320,10 @@ int main_int8()
 
 int main(int argc, char **argv)
 {
+	srand(time(NULL));
     ros::init(argc,argv,"Lidar_node");
 	main_int8();
-
+	Lidar_node node;
+	node.process1();
     return 0;
 }
