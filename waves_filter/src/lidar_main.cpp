@@ -237,30 +237,29 @@ pcl::PointCloud<pcl::PointXYZ> gridMap_filter(pcl::PointCloud<pcl::PointXYZ>::Pt
 			map[l][m].x = l;
 			map[l][m].y = m;
 			map[l][m].diffH = map[l][m].maxH - map[l][m].minH;
+			// filter out outliers
 			if((map[l][m].dis < maxDis && map[l][m].diffH < minDiffH) || map[l][m].num < minNum){
 				map[l][m].isNoise = true;
 			}
 			else{
 				map[l][m].isNoise = false;
-				for (int i = 0; i < 4; ++i) { // extend boundary
+				for (int i = 0; i < 4; ++i) { // extend the map boundary to improve robustness
 					int xx = l + direction[i][0], yy = m + direction[i][1];
 					if(xx < 0 || yy < 0 || xx > (rows-1) || yy > (cols-1))
 						continue;
 					map[xx][yy].isNoise = false;
 				}
 
-				// output pointcloud
+				// output pointcloud, filter results
 				pcl::PointXYZ p1(m+minx,l+miny,0),p2(m+minx,l+miny+1,0),p3(m+minx+1,l+miny,0),p4(m+minx+1,l+miny+1,0);
 				pcloud.push_back(p1);
 				pcloud.push_back(p2);
 				pcloud.push_back(p3);
 				pcloud.push_back(p4);
-
 			}
 		}
 	}
 
-	//kdtreeSearch(cloud,pcloud2,clusterInfo); // need to debug
 	regionGrow(map,clusterInfo,grid_size,minx,maxx,miny,maxy);
 
 	cout << "cluster num: " << clusterInfo.size() << endl;
