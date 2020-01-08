@@ -81,15 +81,131 @@ void print(pcl::PointXYZ p){
 struct gridMap{
 	bool isNoise;
 	int num;
-	float maxH;
-	float minH;
+	int x,y;
+	float maxH,minH;
 	float diffH;
-	gridMap():isNoise(false),num(0),maxH(-999),minH(999),diffH(0){}
+	float dis;
+	gridMap():isNoise(true),num(0),maxH(-999),minH(999),diffH(0),dis(0){}
 };
-pcl::PointCloud<pcl::PointXYZ> gridMap_filter(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float grid_size, float minx, float maxx, float miny, float maxy)
+
+struct Vertex{
+	float upper_left[2];
+	float lower_right[2];
+	Vertex(){
+		upper_left[0] = 0; // maxx
+		upper_left[1] = 0; // maxy
+		lower_right[0] = 0;// minx
+		lower_right[1] = 0;// miny
+	}
+};
+
+Vertex getClusterVertex(pcl::PointCloud<pcl::PointXYZ> &cluster, Vertex &tmp)
 {
-	float minDiffH = 0.15; // minimum height difference
-	int minNum = 5;
+	float maxx(-9999),minx(9999),maxy(-9999),miny(9999); // upperVertex (maxx,maxy), lowerVertex (minx,miny)
+	for (int i = 0; i < cluster.size(); ++i) {
+		if(cluster[i].x > maxx)
+			maxx = cluster[i].x;
+		if(cluster[i].y > maxy)
+			maxy = cluster[i].y;
+		if(cluster[i].x < minx)
+			minx = cluster[i].x;
+		if(cluster[i].y < miny)
+			miny = cluster[i].y;
+	}
+	tmp.upper_left[0] = maxx;
+	tmp.upper_left[1] = maxy;
+	tmp.lower_right[0] = minx;
+	tmp.lower_right[1] = miny;
+	return tmp;
+}
+
+
+float minDis = 5;
+float maxDis = 40;
+float radius = 3;
+
+void kdtreeSearch(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,pcl::PointCloud<pcl::PointXYZ> &pcloud2, vector<Vertex> &clusterInfo)
+{
+	pcl::search::KdTree<pcl::PointXYZ>::Ptr kdtree(new pcl::search::KdTree<pcl::PointXYZ>);
+	kdtree->setInputCloud(cloud);
+	for (int n = 0; n < pcloud2.size(); ++n) {
+		vector<int> pointRadiusSearch;
+		vector<float> pointRadiusSquareDistance;
+		int value = kdtree->radiusSearch(pcloud2[n], radius, pointRadiusSearch, pointRadiusSquareDistance);
+		if(value > 2){
+			Vertex tmp;
+			pcl::PointCloud<pcl::PointXYZ> points;
+			for (int i = 0; i < pointRadiusSearch.size(); ++i) {
+				points.push_back(pcloud2[pointRadiusSearch[i]]);
+			}
+			getClusterVertex(points, tmp);
+			clusterInfo.push_back(tmp);
+		}
+	}
+}
+
+void cmp(int i, int j, int &xmin, int &ymin, int &xmax, int &ymax)
+{
+	if(i < xmin)
+		xmin = i;
+	if(i > xmax)
+		xmax = i;
+	if(j < ymin)
+		ymin = j;
+	if(j > ymax)
+		ymax = j;
+}
+
+void regionGrow(gridMap **map, vector<Vertex> &clusterInfo, float grid_size, float minx, float maxx, float miny, float maxy)
+{
+	int grow_direction[8][2]={{-1,-1},{0,-1},{1,-1},{1,0},{1,1},{0,1},{-1,1},{-1,0}};
+	int cols = (maxx - minx) / grid_size + 1;
+	int rows = (maxy - miny) / grid_size + 1;
+	for (int i = 1; i < rows-1; ++i)
+	{
+		for (int j = 1; j < cols-1; ++j)
+		{
+			int xmin=999,xmax=-999,ymin=999,ymax=-999;
+			vector<gridMap> seed;
+			seed.clear();
+			if(map[i][j].isNoise == false)
+			{
+				seed.push_back(map[i][j]);
+				cmp(i,j,xmin,ymin,xmax,ymax);
+				int m,n;
+				while(!seed.empty())
+				{
+					gridMap current = seed.back();
+					map[current.x][current.y].isNoise = true;
+					seed.pop_back();
+					for (int k = 0; k < 8; ++k) {
+						m = current.x + grow_direction[k][0];
+						n = current.y + grow_direction[k][1];
+						if(m < 0 || n < 0 || m > (rows-1) || n > (cols-1))
+							continue;
+						if(map[m][n].isNoise == false)
+						{
+							seed.push_back(map[m][n]);
+							cmp(m,n,xmin,ymin,xmax,ymax);
+						}
+					}
+				}
+
+				Vertex tmp;
+				tmp.upper_left[0] = xmin+minx;
+				tmp.upper_left[1] = ymin+miny;
+				tmp.lower_right[0] = xmax+minx;
+				tmp.lower_right[1] = ymax+miny;
+				clusterInfo.push_back(tmp);
+			}
+		}
+	}
+}
+
+pcl::PointCloud<pcl::PointXYZ> gridMap_filter(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float grid_size, float minx, float maxx, float miny, float maxy, vector<Vertex> &clusterInfo)
+{
+	float minDiffH = 0.20; // minimum height difference
+	int minNum = 3;
 	// initial
 	int cols = (maxx - minx) / grid_size + 1;
 	int rows = (maxy - miny) / grid_size + 1;
@@ -101,8 +217,12 @@ pcl::PointCloud<pcl::PointXYZ> gridMap_filter(pcl::PointCloud<pcl::PointXYZ>::Pt
 	// filling map and filtering
 	for (int k = 0; k < cloud->points.size(); ++k) {
 		auto pc = cloud->points[k];
+		float dis = sqrt((pc.x*pc.x)+(pc.y*pc.y));
+		if(dis < minDis)
+			continue;
 		int i = (pc.y - miny) / grid_size;
 		int j = (pc.x - minx) / grid_size;
+		map[i][j].dis = dis;
 		map[i][j].num += 1;
 		if(pc.z > map[i][j].maxH)
 			map[i][j].maxH = pc.z;
@@ -110,21 +230,45 @@ pcl::PointCloud<pcl::PointXYZ> gridMap_filter(pcl::PointCloud<pcl::PointXYZ>::Pt
 			map[i][j].minH = pc.z;
 	}
 
-	pcl::PointCloud<pcl::PointXYZ> pcloud;
+	int direction[4][2] = {{-1,0},{1,0},{0,1},{0,-1}};
+	pcl::PointCloud<pcl::PointXYZ> pcloud,pcloud2;
 	for (int l = 0; l < rows; ++l) {
 		for (int m = 0; m < cols; ++m) {
+			map[l][m].x = l;
+			map[l][m].y = m;
 			map[l][m].diffH = map[l][m].maxH - map[l][m].minH;
-			if(map[l][m].diffH < minDiffH || map[l][m].num < minNum){
+			if((map[l][m].dis < maxDis && map[l][m].diffH < minDiffH) || map[l][m].num < minNum){
 				map[l][m].isNoise = true;
 			}
 			else{
-				pcl::PointXYZ p1(l+miny,m+minx,0),p2(l+miny+1,m+minx,0),p3(l+miny,m+minx+1,0),p4(l+miny+1,m+minx+1,0);
+				map[l][m].isNoise = false;
+				for (int i = 0; i < 4; ++i) { // extend boundary
+					int xx = l + direction[i][0], yy = m + direction[i][1];
+					if(xx < 0 || yy < 0 || xx > (rows-1) || yy > (cols-1))
+						continue;
+					map[xx][yy].isNoise = false;
+				}
+
+				// output pointcloud
+				pcl::PointXYZ p1(m+minx,l+miny,0),p2(m+minx,l+miny+1,0),p3(m+minx+1,l+miny,0),p4(m+minx+1,l+miny+1,0);
 				pcloud.push_back(p1);
 				pcloud.push_back(p2);
 				pcloud.push_back(p3);
 				pcloud.push_back(p4);
+
 			}
 		}
+	}
+
+	//kdtreeSearch(cloud,pcloud2,clusterInfo); // need to debug
+	regionGrow(map,clusterInfo,grid_size,minx,maxx,miny,maxy);
+
+	cout << "cluster num: " << clusterInfo.size() << endl;
+	for (int i = 0; i < clusterInfo.size(); ++i) {
+		cout << "No." << i << endl;
+		cout << "upper: " << clusterInfo[i].upper_left[0] << " " << clusterInfo[i].upper_left[1] << endl;
+		cout << "lower: " << clusterInfo[i].lower_right[0] << " " << clusterInfo[i].lower_right[1] << endl;
+		cout << "-----------------" << endl;
 	}
 
 	delete[] map;
@@ -133,9 +277,9 @@ pcl::PointCloud<pcl::PointXYZ> gridMap_filter(pcl::PointCloud<pcl::PointXYZ>::Pt
 
 void Lidar_node::process1(){
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
-	for(int i = 0; i < 5; i++){
+	for(int i = 0; i < 3; i++){
 		ifstream in;
-		string str = "/media/yxt/XT/yunzhou/data1/1578127429493/lidar/";
+		string str = "/home/yxt/conference/yunzhou/waves_filter/data/";
 		stringstream ss;
 		string num;
 		ss.clear();
@@ -162,7 +306,8 @@ void Lidar_node::process1(){
 		}
 
 		pcl::PointCloud<pcl::PointXYZ> result;
-		result = gridMap_filter(cloud,grid_size,minx,maxx,miny,maxy);
+		vector<Vertex> clusterInfo; // cluster result
+		result = gridMap_filter(cloud,grid_size,minx,maxx,miny,maxy,clusterInfo);
 
 
 		cout << str << endl;
@@ -175,7 +320,7 @@ void Lidar_node::process1(){
 		pcl::toROSMsg(result,fresult);
 		fresult.header.frame_id = "pandar";
 		fpub.publish(fresult);
-		sleep(10);
+		sleep(2);
 	}
 
 }
@@ -324,6 +469,6 @@ int main(int argc, char **argv)
     ros::init(argc,argv,"Lidar_node");
 	main_int8();
 	Lidar_node node;
-	node.process1();
+	node.process1(); // filtering and clustering
     return 0;
 }
