@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/yxt/conference/IV/kalman/cmake-build-debug/devel/setup.sh

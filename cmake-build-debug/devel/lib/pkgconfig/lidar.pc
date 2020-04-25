@@ -1,0 +1,8 @@
+prefix=/home/yxt/conference/IV/kalman/cmake-build-debug/devel
+
+Name: lidar
+Description: Description of lidar
+Version: 0.0.0
+Cflags: 
+Libs: -L/home/yxt/conference/IV/kalman/cmake-build-debug/devel/lib 
+Requires: 
