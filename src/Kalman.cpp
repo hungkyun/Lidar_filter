@@ -2,15 +2,13 @@
 #include "Kalman.h"
 
 using namespace std;
-int xx_min = -99;
-int xx_max = 99;
 
 
 class Tracker{
 public:
 	Tracker();
 	bool polynomial_curve_fit(std::vector<cv::Point>& key_point, int n, cv::Mat& A);
-	void Dis_clustering(const pcl::PointCloud<pcl::PointXYZI> in_cloud,std::vector<pcl::PointIndices> &cluster_indices);
+	void clustering(const pcl::PointCloud<pcl::PointXYZI> in_cloud,std::vector<pcl::PointIndices> &cluster_indices);
 	void tracking(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cloud,std::vector<pcl::PointIndices> &cluster_indices,const pcl::PointCloud<pcl::PointXYZ>::Ptr predict_cloud,const pcl::PointCloud<pcl::PointXYZ>::Ptr estimated_cloud);
 	void processPointcloud(const sensor_msgs::PointCloud2 &scan);
 	void init_kalman(cv::KalmanFilter &kalman, const Target_ tar_temp);
@@ -30,7 +28,7 @@ Tracker::Tracker()
 	tar_list.clear();
 	init = false;
 	track_num = 0;
-	points_sub = nh.subscribe("velodyne_points", 1028, &Tracker::processPointcloud, this);
+	points_sub = nh.subscribe("all_points", 1028, &Tracker::processPointcloud, this);
 	predict_pub = nh.advertise<sensor_msgs::PointCloud2>("/predict_points", 10);
 	estimate_pub = nh.advertise<sensor_msgs::PointCloud2>("/estimated_points", 10);
 }
@@ -42,8 +40,9 @@ void Tracker::processPointcloud(const sensor_msgs::PointCloud2 &scan) {
 	pcl::PointCloud<pcl::PointXYZI>::Ptr temp_cloud(new pcl::PointCloud<pcl::PointXYZI>);
 	pcl::fromPCLPointCloud2(pcl_pc,*temp_cloud); // all points' data are stored in temp_cloud
 
+	std::cout << "point num: " << temp_cloud->points.size() << std::endl;
 	std::vector<pcl::PointIndices> cluster_indices;
-	Dis_clustering(*temp_cloud,cluster_indices);
+	clustering(*temp_cloud,cluster_indices);
 
 	pcl::PointCloud<pcl::PointXYZ>::Ptr predict_cloud(new pcl::PointCloud<pcl::PointXYZ>);
 	pcl::PointCloud<pcl::PointXYZ>::Ptr estimated_cloud(new pcl::PointCloud<pcl::PointXYZ>);
@@ -87,7 +86,7 @@ bool Tracker::polynomial_curve_fit(std::vector<cv::Point>& key_point, int n, cv:
 	//Number of key points
 	int N = key_point.size();
  
-	//构造矩阵X
+	//construct matrix X
 	cv::Mat X = cv::Mat::zeros(n + 1, n + 1, CV_64FC1);
 	for (int i = 0; i < n + 1; i++)
 	{
@@ -101,7 +100,7 @@ bool Tracker::polynomial_curve_fit(std::vector<cv::Point>& key_point, int n, cv:
 		}
 	}
  
-	//构造矩阵Y
+	//construct matrix Y
 	cv::Mat Y = cv::Mat::zeros(n + 1, 1, CV_64FC1);
 	for (int i = 0; i < n + 1; i++)
 	{
@@ -113,7 +112,7 @@ bool Tracker::polynomial_curve_fit(std::vector<cv::Point>& key_point, int n, cv:
 	}
  
 	A = cv::Mat::zeros(n + 1, 1, CV_64FC1);
-	//求解矩阵A
+	//get matrix A
 	cv::solve(X, Y, A, cv::DECOMP_LU);
 	return true;
 }
@@ -155,20 +154,24 @@ void Tracker::getClusterVertex(std::vector<cv::Point> &cluster, Vertex &tmp)
 	if((maxx-minx)>(maxy-miny)){
 		tmp.flag = 0;
 		tmp.longth = sqrt(pow(tmp.right_point.x-tmp.left_point.x,2)+pow(tmp.right_point.y-tmp.left_point.y,2));
+		tmp.begin = tmp.left_point;
+		tmp.end = tmp.right_point;
 	}
 	else{
 		tmp.flag = 1;
 		tmp.longth = sqrt(pow(tmp.top_point.x-tmp.low_point.x,2)+pow(tmp.top_point.y-tmp.low_point.y,2));
+		tmp.begin = tmp.low_point;
+		tmp.end = tmp.top_point;
 	}
 }
 
-void Tracker::Dis_clustering(const pcl::PointCloud<pcl::PointXYZI> in_cloud,std::vector<pcl::PointIndices> &cluster_indices){
+void Tracker::clustering(const pcl::PointCloud<pcl::PointXYZI> in_cloud,std::vector<pcl::PointIndices> &cluster_indices){
 	
 	pcl::search::KdTree<pcl::PointXYZI>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZI>);
 	tree->setInputCloud (in_cloud.makeShared());
 	pcl::EuclideanClusterExtraction<pcl::PointXYZI> ec;
-	ec.setClusterTolerance (5);
-	ec.setMinClusterSize (10);
+	ec.setClusterTolerance (10);
+	ec.setMinClusterSize (20);
 	ec.setMaxClusterSize (2500);
 	ec.setSearchMethod (tree);
 	ec.setInputCloud (in_cloud.makeShared());
@@ -199,14 +202,11 @@ void Tracker::init_kalman(cv::KalmanFilter &kalman, const Target_ tar_temp) {
 void Tracker::tracking(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cloud,std::vector<pcl::PointIndices> &cluster_indices,const pcl::PointCloud<pcl::PointXYZ>::Ptr predict_cloud,const pcl::PointCloud<pcl::PointXYZ>::Ptr estimated_cloud)
 {
 	
-	vector<curr_tar> curr_target;
-
 	for (std::vector<pcl::PointIndices>::const_iterator i = cluster_indices.begin (); i != cluster_indices.end (); ++i){
 
 		std::cout << "new target" << std::endl;
 		std::vector<cv::Point> points_2d;
 		Target_ tar_temp;
-		Vertex tmp;
 		double meanx(0.0), meany(0.0);
 		int count(1);
 		for (std::vector<int>::const_iterator pit = i->indices.begin (); pit != i->indices.end (); ++pit){
@@ -218,9 +218,7 @@ void Tracker::tracking(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cloud,std::
 		tar_temp.target_point = cv::Point(meanx/count,meany/count);
 		getClusterVertex(points_2d,tar_temp.vertex);
 
-		cv::Mat A;
-		polynomial_curve_fit(points_2d, 2, A);
-		tar_temp.param = A;
+		polynomial_curve_fit(points_2d, 2, tar_temp.param);
 
 		//kalmanFilter
 		if(!init)
@@ -236,7 +234,7 @@ void Tracker::tracking(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cloud,std::
 			int match_id = -1;
 			for (int j = 0; j < tar_list.size(); ++j) {
 				dis_judge = pow((tar_list[j].target_point.x-tar_temp.target_point.x),2) + pow((tar_list[j].target_point.y-tar_temp.target_point.y),2);
-				if(dis_judge<=400 && tar_list[j].match==0){
+				if(dis_judge<=100 && tar_list[j].match==0){
 					tar_temp.trace_ID = tar_list[j].trace_ID;
 					tar_list[j].match = 1;
 					match_id = j;
@@ -261,24 +259,38 @@ void Tracker::tracking(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cloud,std::
 				cv::Mat estimated = tar_list[match_id].kalman.correct(measure);
 				tar_temp.param = estimated;
 				tar_temp.pred = predict;
-				for (int x = xx_min; x < xx_max; x++)
-				{
-					double y = tar_temp.pred.at<double>(0,0) + tar_temp.pred.at<double>(1,0) * x + tar_temp.pred.at<double>(2,0) * x * x;
-					predict_cloud->points.push_back(pcl::PointXYZ(x,y,0));
+				tar_temp.kalman = tar_list[match_id].kalman;
+
+				double xbengin,xend;
+				if(tar_temp.vertex.begin.x > tar_temp.vertex.end.x){
+					xbengin = tar_temp.vertex.end.x;
+					xend = tar_temp.vertex.begin.x;
+				}
+				else{
+					xbengin = tar_temp.vertex.begin.x;
+					xend = tar_temp.vertex.end.x;
+				}
+				for (double x = xbengin; x < xend;) {
+					double y = tar_temp.pred.at<double>(0, 0) + tar_temp.pred.at<double>(1, 0) * x +
+							   tar_temp.pred.at<double>(2, 0) * x * x;
+					predict_cloud->points.push_back(pcl::PointXYZ(float(x), float(y), 0));
+
+					double y1 = tar_temp.param.at<double>(0, 0) + tar_temp.param.at<double>(1, 0) * x +
+								tar_temp.param.at<double>(2, 0) * x * x;
+					estimated_cloud->points.push_back(pcl::PointXYZ(float(x), float(y1), 0));
+
+					x += 0.01;
 				}
 				cout << "predict" << endl;
+				tar_list[match_id] = tar_temp; //update
 			}
-		}
-		for (int x = xx_min; x < xx_max; x++)
-		{
-			double y = tar_temp.param.at<double>(0,0) + tar_temp.param.at<double>(1,0) * x + tar_temp.param.at<double>(2,0) * x * x;
-			estimated_cloud->points.push_back(pcl::PointXYZ(x,y,0));
 		}
 	}
 }
 
 int main(int argc, char **argv)
 {
+	std::cout << "kalman" << std::endl;
     ros::init(argc, argv, "kalman_node");
     Tracker tracker;
     ros::spin();
