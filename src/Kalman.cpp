@@ -374,16 +374,16 @@ void Tracker::tracking_newmatch(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cl
 		cout << "Ex. " << ans << endl;
 
 		for (int k = 0; k < tar_now.size(); ++k) {
-			if(ikm.mmp[k][ikm.match[k]] < 0)
+			if(ikm.mmp[k][ikm.imatch[k]] < 0)
 				tar_now[k].match = -1;
 			else{
-				int index = k*tar_now.size()+ikm.match[k];
+				int index = k*tar_now.size()+ikm.imatch[k];
 				if(disv[index] > 10.0){
 					tar_now[k].match = -1;
 				}
 				else{
-					tar_list[ikm.match[k]].match = k;
-					tar_now[k].match = ikm.match[k];
+					tar_list[ikm.imatch[k]].match = k;
+					tar_now[k].match = ikm.imatch[k];
 				}
 			}
 		}
@@ -466,7 +466,7 @@ int main(int argc, char **argv)
 	std::cout << "kalman" << std::endl;
     ros::init(argc, argv, "kalman_node");
     Tracker tracker;
-    //ros::spin();
+    ros::spin();
 
 	/*
 	vector<int> a;
@@ -477,21 +477,29 @@ int main(int argc, char **argv)
 	cout << a[0] << " " << a[1] << endl;
     */
     // test KM algorithm
+
 	/*
 	KM ikm;
-	ikm.num = 3;
-	ikm.mmp[0][0] = 8;
-	ikm.mmp[0][1] = 10;
-	ikm.mmp[0][2] = -1;
-	ikm.mmp[1][0] = 10;
+	ikm.num = 4;
+	ikm.mmp[0][0] = 5;
+	ikm.mmp[0][1] = 1;
+	ikm.mmp[0][2] = 0;
+	ikm.mmp[0][3] = 0;
+	ikm.mmp[1][0] = 4;
 	ikm.mmp[1][1] = 8;
-	ikm.mmp[1][2] = -1;
-	ikm.mmp[2][0] = 5;
+	ikm.mmp[1][2] = 0;
+	ikm.mmp[1][3] = 0;
+	ikm.mmp[2][0] = 1;
 	ikm.mmp[2][1] = 4;
-	ikm.mmp[2][2] = -1;
+	ikm.mmp[2][2] = 0;
+	ikm.mmp[2][3] = 0;
+	ikm.mmp[3][0] = 10;
+	ikm.mmp[3][1] = 18;
+	ikm.mmp[3][2] = 0;
+	ikm.mmp[3][3] = 0;
 	cout << ikm.ikm_match() << endl;
 	for (int i = 0; i < ikm.num; ++i) {
-		cout << ikm.match[i] << endl;
+		cout << ikm.imatch[i] << endl;
 	}
 	*/
     return 0;

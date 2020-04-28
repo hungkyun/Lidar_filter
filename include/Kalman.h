@@ -77,6 +77,7 @@ public:
 	double val_first[maxn];
 	double val_second[maxn];
 	int match[maxn];
+	int imatch[maxn];
 	int num;
 };
 
@@ -88,6 +89,7 @@ void KM::km_init() {
 	num = 0;
 	memset(mmp,0,sizeof(mmp));
 	memset(match,0,sizeof(match));
+	memset(imatch,0,sizeof(imatch));
 	memset(slack,0,sizeof(slack));
 	memset(match,-1,sizeof(match));
 	memset(val_first,0,sizeof(val_first));
@@ -123,7 +125,15 @@ double KM::ikm_match() {
 		}
 	}
 	double ans=0.0;
-	for(int i=0;i<num;i++) ans+=mmp[match[i]][i];
+	for(int i=0;i<num;i++){ ans+=mmp[match[i]][i]; imatch[match[i]]=i;}
+	/*
+	for (int l = 0; l < num; ++l) {
+		for (int i = 0; i < num; ++i) {
+			std::cout << mmp[l][i] << " ";
+		}
+		std::cout << std::endl;
+	}
+	*/
 	return ans;
 }
 
