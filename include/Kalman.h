@@ -47,11 +47,13 @@ struct Target_{
 	int trace_ID;
 	int match;
 	int point_num;
+	int age;
 	cv::Point target_point;
 	cv::Mat param;
 	cv::Mat pred;
 	cv::KalmanFilter kalman;
 	Target_(){
+		age = 0;
 		trace_ID = -1;
 		match = 0;
 		point_num = 0;

@@ -341,27 +341,29 @@ void Tracker::tracking_newmatch(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cl
 	if(init)
 	{
 		//weight=n1/(d*n2), w1=last frame point num, w2=this frame point num
-		for (int i = 0; i < tar_list.size(); ++i)
+		for (int i = 0; i < tar_now.size(); ++i)
 		{
-			for (int j = 0; j < tar_now.size(); ++j)
+			for (int j = 0; j < tar_list.size(); ++j)
 			{
-				double dis = sqrt(pow(tar_list[i].target_point.x-tar_now[j].target_point.x,2)+pow(tar_list[i].target_point.y-tar_now[j].target_point.y,2));
-				ikm.mmp[i][j] = 1000.0 * tar_list[i].point_num / tar_now[j].point_num / dis;
+				double dis = sqrt(pow(tar_list[j].target_point.x-tar_now[i].target_point.x,2)+pow(tar_list[j].target_point.y-tar_now[i].target_point.y,2));
+				ikm.mmp[i][j] = 1000.0 * tar_now[i].point_num / (tar_list[j].point_num * dis * 1.0);
 			}
 		}
 		//if n1 != n2, full mmp[][] with -1
 		if(tar_list.size()!=tar_now.size())
 		{
+			// expand row
 			if(tar_list.size()>tar_now.size())
 			{
-				for (int i = 0; i < tar_list.size(); ++i)
+				for (int i = tar_now.size(); i < tar_list.size(); ++i)
 				{
-					for (int j = tar_now.size(); j < tar_list.size(); ++j) {
+					for (int j = 0; j < tar_list.size(); ++j) {
 						ikm.mmp[i][j] = -1.0;
 					}
 				}
 				ikm.num = tar_list.size();
 			}
+			// expand column
 			else
 			{
 				for (int i = 0; i < tar_now.size(); ++i)
@@ -375,6 +377,14 @@ void Tracker::tracking_newmatch(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cl
 			}
 		}
 		double ans = ikm.ikm_match();
+		cout << "Ex. " << ans << endl;
+
+		for (int k = 0; k < tar_now.size(); ++k) {
+			if(ikm.mmp[ikm.match[k]][k] < 0)
+				tar_now[k].match = -1;
+			else
+				tar_now[k].match = ikm.match[k];
+		}
 	}
 
 	for (int k = 0; k < tar_now.size(); ++k)
@@ -389,7 +399,7 @@ void Tracker::tracking_newmatch(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cl
 		else
 		{
 			// no match
-			if(ikm.mmp[ikm.match[k]][k] < 0)
+			if(tar_now[k].match < 0)
 			{
 				tar_now[k].trace_ID = track_num;
 				track_num++;
@@ -398,17 +408,17 @@ void Tracker::tracking_newmatch(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cl
 			}
 			else
 			{
-				cv::setIdentity(tar_list[ikm.match[k]].kalman.measurementNoiseCov,cv::Scalar::all(0.1));
-				cv::Mat predict = tar_list[ikm.match[k]].kalman.predict();
+				cv::setIdentity(tar_list[tar_now[k].match].kalman.measurementNoiseCov,cv::Scalar::all(0.1));
+				cv::Mat predict = tar_list[tar_now[k].match].kalman.predict();
 				cv::Mat measure(3,1,CV_64FC1);
 				measure.at<double>(0) = tar_now[k].param.at<double>(0,0);
 				measure.at<double>(1) = tar_now[k].param.at<double>(1,0);
 				measure.at<double>(2) = tar_now[k].param.at<double>(2,0);
 
-				cv::Mat estimated = tar_list[ikm.match[k]].kalman.correct(measure);
+				cv::Mat estimated = tar_list[tar_now[k].match].kalman.correct(measure);
 				tar_now[k].param = estimated;
 				tar_now[k].pred = predict;
-				tar_now[k].kalman = tar_list[ikm.match[k]].kalman;
+				tar_now[k].kalman = tar_list[tar_now[k].match].kalman;
 
 				double xbengin,xend;
 				if(tar_now[k].vertex.begin.x > tar_now[k].vertex.end.x){
@@ -431,7 +441,8 @@ void Tracker::tracking_newmatch(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cl
 					x += 0.01;
 				}
 				cout << "predict" << endl;
-				tar_list[ikm.match[k]] = tar_now[k]; //update
+				tar_now[k].age = tar_list[tar_now[k].match].age + 1;
+				tar_list[tar_now[k].match] = tar_now[k]; //update
 			}
 		}
 	}
