@@ -55,7 +55,7 @@ struct Target_{
 	Target_(){
 		age = 0;
 		trace_ID = -1;
-		match = 0;
+		match = -1;
 		point_num = 0;
 	}
 	Vertex vertex;
