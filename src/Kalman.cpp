@@ -377,7 +377,7 @@ void Tracker::tracking_newmatch(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cl
 			if(ikm.mmp[k][ikm.imatch[k]] < 0)
 				tar_now[k].match = -1;
 			else{
-				int index = k*tar_now.size()+ikm.imatch[k];
+				int index = k*tar_list.size()+ikm.imatch[k];
 				if(disv[index] > 10.0){
 					tar_now[k].match = -1;
 				}
@@ -481,20 +481,20 @@ int main(int argc, char **argv)
 	/*
 	KM ikm;
 	ikm.num = 4;
-	ikm.mmp[0][0] = 5;
-	ikm.mmp[0][1] = 1;
+	ikm.mmp[0][0] = 0;
+	ikm.mmp[0][1] = 10;
 	ikm.mmp[0][2] = 0;
 	ikm.mmp[0][3] = 0;
-	ikm.mmp[1][0] = 4;
-	ikm.mmp[1][1] = 8;
+	ikm.mmp[1][0] = 0;
+	ikm.mmp[1][1] = 2;
 	ikm.mmp[1][2] = 0;
 	ikm.mmp[1][3] = 0;
-	ikm.mmp[2][0] = 1;
-	ikm.mmp[2][1] = 4;
+	ikm.mmp[2][0] = 0;
+	ikm.mmp[2][1] = 8;
 	ikm.mmp[2][2] = 0;
 	ikm.mmp[2][3] = 0;
-	ikm.mmp[3][0] = 10;
-	ikm.mmp[3][1] = 18;
+	ikm.mmp[3][0] = 0;
+	ikm.mmp[3][1] = 120;
 	ikm.mmp[3][2] = 0;
 	ikm.mmp[3][3] = 0;
 	cout << ikm.ikm_match() << endl;
