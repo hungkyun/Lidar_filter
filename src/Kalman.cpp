@@ -354,9 +354,9 @@ void Tracker::tracking_match2(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_clou
 				double dis = sqrt(pow(tar_list[j].target_point.x-tar_now[i].target_point.x,2)+pow(tar_list[j].target_point.y-tar_now[i].target_point.y,2));
 				disv.push_back(dis);
 				//ikm.mmp[i][j] = 1000 * tar_now[i].point_num / (tar_list[j].point_num * dis * 1.0 + 1.0);
-				//ikm.mmp[i][j] =  1000.0 / (abs(tar_now[i].point_num - tar_list[j].point_num) + dis + 1.0);
+				ikm.mmp[i][j] =  1000.0 / (sqrt(abs(tar_now[i].point_num - tar_list[j].point_num)) + dis*dis*dis + 1.0);
 				//ikm.mmp[i][j] = 1000 * (1 - dis/maxDis) / sqrt(abs(tar_now[i].point_num-tar_list[j].point_num));
-				ikm.mmp[i][j] = 1000.0 / ((dis+1) * sqrt(abs(tar_now[i].point_num-tar_list[j].point_num)) * (1 - tar_list[j].age));
+				//ikm.mmp[i][j] = 1000.0 / ((dis+1) * sqrt(abs(tar_now[i].point_num-tar_list[j].point_num)) * (1 - tar_list[j].age));
 				cout<< i << " " << j << " " << "distance: "<< dis <<endl;
 				cout << "weight: " << ikm.mmp[i][j] << endl;
 			}
