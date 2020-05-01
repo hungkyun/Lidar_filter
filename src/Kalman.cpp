@@ -331,6 +331,7 @@ void Tracker::tracking_match2(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_clou
 		tar_temp.target_point = cv::Point(meanx/(points_2d.size()*1.0),meany/(points_2d.size()*1.0));
 		cout << "tar_point: " << tar_temp.target_point.x << " " << tar_temp.target_point.y << endl;
 		getClusterVertex(points_2d,tar_temp.vertex);
+		tar_temp.longth = tar_temp.vertex.longth;
 		polynomial_curve_fit(points_2d, 2, tar_temp.param);
 
 		//points.push_back(points_2d);
@@ -440,18 +441,23 @@ void Tracker::tracking_match2(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_clou
 			}
 			else
 			{
-				cv::setIdentity(tar_list[tar_now[k].match].kalman.measurementNoiseCov,cv::Scalar::all(0.1));
-				cv::Mat predict = tar_list[tar_now[k].match].kalman.predict();
+				int match_id = tar_now[k].match;
+				cv::setIdentity(tar_list[match_id].kalman.measurementNoiseCov,cv::Scalar::all(0.1));
+				cv::Mat predict = tar_list[match_id].kalman.predict();
 				cv::Mat measure(3,1,CV_64FC1);
 				measure.at<double>(0) = tar_now[k].param.at<double>(0,0);
 				measure.at<double>(1) = tar_now[k].param.at<double>(1,0);
 				measure.at<double>(2) = tar_now[k].param.at<double>(2,0);
 
-				cv::Mat estimated = tar_list[tar_now[k].match].kalman.correct(measure);
+				cv::Mat estimated = tar_list[match_id].kalman.correct(measure);
 				tar_now[k].param = estimated;
 				tar_now[k].pred = predict;
-				tar_now[k].kalman = tar_list[tar_now[k].match].kalman;
+				tar_now[k].kalman = tar_list[match_id].kalman;
 
+				if(tar_now[k].longth < (0.85*tar_list[match_id].longth)){
+					tar_now[k].longth = 0.85*tar_list[match_id].longth;
+				}
+				
 				double xbengin,xend;
 				if(tar_now[k].vertex.begin.x > tar_now[k].vertex.end.x){
 					xbengin = tar_now[k].vertex.end.x;
@@ -473,8 +479,8 @@ void Tracker::tracking_match2(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_clou
 					x += 0.01;
 				}
 				cout << "predict" << endl;
-				tar_now[k].age = tar_list[tar_now[k].match].age + 1;
-				tar_list[tar_now[k].match] = tar_now[k]; //update
+				tar_now[k].age = tar_list[match_id].age + 1;
+				tar_list[match_id] = tar_now[k]; //update
 			}
 		}
 	}

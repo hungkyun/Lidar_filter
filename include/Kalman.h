@@ -48,6 +48,8 @@ struct Target_{
 	int match;
 	int point_num;
 	int age;
+	double longth;
+	double beginx,endx;
 	cv::Point target_point;
 	cv::Mat param;
 	cv::Mat pred;
@@ -57,6 +59,9 @@ struct Target_{
 		trace_ID = -1;
 		match = -1;
 		point_num = 0;
+		longth = 0.0;
+		beginx = 0.0;
+		endx = 0.0;
 	}
 	Vertex vertex;
 };
